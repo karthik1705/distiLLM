@@ -1,0 +1,11 @@
+torch
+transformers
+accelerate
+datasets
+evaluate
+numpy
+pandas
+tqdm
+wandb
+sentencepiece
+ipykernel
