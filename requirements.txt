@@ -9,3 +9,10 @@ tqdm
 wandb
 sentencepiece
 ipykernel
+jupyter 
+notebook
+openpyxl
+
+# LLMs
+google-generativeai
+vertexai
