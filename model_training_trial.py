@@ -29,7 +29,7 @@ raw_text = dataset_raw['Room Description'].to_list()
 raw_text_str1 = raw_text[0]
 #raw_text_str1
 
-sub_raw_text = raw_text[:2] + raw_text[10000:10001]
+sub_raw_text = raw_text[:5] + raw_text[10000:10005]
 sub_raw_text
 
 # %%
@@ -83,7 +83,7 @@ taxes_fees_str
 # %%
 # Fetching the model
 project_id = 'fluent-vortex-449308-f6'
-model_name = 'gemini-1.5-flash-latest'
+model_name = 'gemini-1.5-flash-002'
 
 # %%
 # Initialize the Vertex AI client
@@ -91,8 +91,49 @@ vertexai.init(project = project_id, location = 'us-central1')
 model = GenerativeModel(model_name = model_name)
 
 # %%
+from vertexai.generative_models import (
+    GenerativeModel,
+    HarmCategory,
+    HarmBlockThreshold,
+    SafetySetting,
+)
+
+# Safety Settings
+safety_config = [
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=HarmBlockThreshold.BLOCK_NONE,
+    ),
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=HarmBlockThreshold.BLOCK_NONE,
+    ),
+]
+
+# %%
+# Examples v2
+
+examples = [
+    """Text: IN THE ART OF NEW YORK|MADISON KING RM. 450 SQFT. MADISON AVE VIEWS LRGE MARBLE BATH SEP SHOWER. COMP WIFI
+    JSON: {"roomType": "King Bedroom", "bedType": "Unknown", "ratePlanInclusives": ["Private bath or shower", "Complimentary wireless internet"], "roomAmenities": ["Separate tub and shower", "Wireless internet connection"], "mealPlan": "Unknown", "roomView": "Avenue View", "taxesAndFees": "Unknown"}""",
+
+    """Text: AAA MEMBER RATE|ECO-FICIENT QUEEN ROOM RUNWAY VIEW. COMPLEMENTARY WIFI, IN ROOM COFFEE, IRON BOARD
+    JSON: {"roomType": "Queen Bedroom", "bedType": "Unknown", "ratePlanInclusives": ["Eco Friendly", "Complimentary in-room coffee or tea", "Ironing board"], "roomAmenities": ["Wireless internet connection", "Ironing board"], "mealPlan": "Unknown", "roomView": "Runway View", "taxesAndFees": "Unknown"}"""
+]
+
+output_format = """
+    JSON: {"roomType": "string", "bedType": "string", "ratePlanInclusives": ["string"], "roomAmenities": ["string"], "mealPlan": "string", "roomView": "string", "taxesAndFees": "string"}
+"""
+
+output_format_example = """
+    JSON: {"roomType": "Queen Bedroom", "bedType": "King Bed", "ratePlanInclusives": {"values": ["Unknown"], "confidence": 0.85}, "roomAmenities": {"values": ["Wireless internet connection", "Ironing board"], "confidence": 0.85}, "mealPlan": {"value": "Unknown", "confidence": 0.8}, "roomView": {"value": "Ocean view", "confidence": 0.95}, "taxesAndFees": {"value": "Unknown", "confidence": 0.95}}
+"""
+
+# Examples
+# %%
+
 # Function to prompt the model with a single text
-def process_single_text(text, model):
+def process_single_text(model, text, examples,  output_format, output_format_example):
     # Preparing the prompt
     prompt = f"""
     Extract the following attributes from the text below:
@@ -104,40 +145,9 @@ def process_single_text(text, model):
     - Room View
     - Taxes and Fees
 
-    Format your response as a JSON object with these exact keys:
-    {
-        "room_type": "string",
-        "bed_type": "string",
-        "rate_plan_inclusives": "list of strings",
-        "room_amenities": "list of strings",
-        "meal_plan": "string",
-        "room_view": "string",
-        "taxes_and_fees": "string"
-    }
-
-    Here are two examples of correct extractions:
-
-    Input: "IN THE ART OF NEW YORK|MADISON KING RM. 450 SQFT. MADISON AVE VIEWS LRGE MARBLE BATH SEP SHOWER. COMP WIFI"
-    Output: {
-        "room_type": "King Bedroom",
-        "bed_type": "Unknown",
-        "rate_plan_inclusives": ["Private bath or shower", "Complimetary wirless internet"],
-        "room_amenities": ["Separate tub and shower","Wireless internet connection"],
-        "meal_plan": "Unknown",
-        "room_view": "Avenue View",
-        "taxes_and_fees": "Unknown"
-    }
-
-    Input: "AAA MEMBER RATE|ECO-FICIENT QUEEN ROOM RUNWAY VIEW. COMPLEMENTARY WIFI, IN ROOM COFFEE, IRON BOARD"
-    Output: {
-        "room_type": "Queen Bedroom",
-        "bed_type": "Unknown",
-        "rate_plan_inclusives": ["Eco Friendly ", "Complimentary in-room coffee or tea", "Ironing board"],
-        "room_amenities": ["Wireless internet connection", "Ironing board"],
-        "meal_plan": "Unknown",
-        "room_view": "Runway View",
-        "taxes_and_fees": "Unknown"
-    }
+    Format your response as a JSON object with these exact keys: {output_format}
+    
+    Here are two examples of correct extractions: {examples}   
 
     Now extract from this text: {text} 
 
@@ -150,46 +160,30 @@ def process_single_text(text, model):
     Room Views: {room_view_str}
     Taxes and Fees: {taxes_fees_str}
 
-    If a value doesn't match any of the allowed options, select the closest match or return "Unknown".
+    If no clear match exists, return 'Unknown'.
 
     Rules for extraction:
     1. Each room must have exactly one room type
     2. Each room must have at least one bed type
     3. Rate Plan Inclusives should be a list
     4. Meal Plan is optional
-    3. View is optional
-    4. Amenities should be a list
-    5. Do not infer attributes that aren't explicitly mentioned
+    5. View is optional
+    6. Amenities should be a list
+    7. Do not infer attributes that aren't explicitly mentioned
 
     Special cases to handle:
     - If multiple bed types are mentioned, list all of them
     - If amenities are described but not in our standard list, choose the closest match
-    - If the description is unclear or ambiguous, mark as "Unclear"
+    - Unclear if ambiguous.
     - Ignore pricing and promotional information
 
-
-    For each extracted attribute, provide a confidence score, like below example:
-    {
-        "room_type": {"value": "Queen Bedroom", "confidence": 0.9},
-        "bed_type": {"value": "King Bed", "confidence": 0.8},
-        "rate_plan_inclusives": {
-            "values": ["Unknown"],
-            "confidence": 0.85
-        },
-        "room_amenities": {
-            "values": ["Wireless internet connection", "Ironing board"],
-            "confidence": 0.85
-        },
-        "meal_plan": {"value": "Unknown", "confidence": 0.8},
-        "room_view": {"value": "Ocean view", "confidence": 0.95},
-        "taxes_and_fees": {"value": "Unknown", "confidence": 0.95}
-    }
-
+    For each extracted attribute, provide a confidence score, like below example: {output_format_example}
+    
     Follow these steps:
     1. First, identify all mentioned attributes in the text
     2. Then, match each attribute to the closest normalized value
     3. Validate against the allowed values list
-    4. Format the final output as JSON
+    4. Format the final output as JSON without escaping
     5. Explain your reasoning for any uncertain matches
 
     Show your work:
@@ -197,33 +191,46 @@ def process_single_text(text, model):
     Normalized matches: ...
     Final output: ...
     Reasoning: ...
+    Return the final result similar to the example, with no extra text.
 
     """
-    response = model.generate_content(prompt)
+    response = model.generate_content(prompt, safety_settings=safety_config)
     return response
 
 #%%
-result1 = process_single_text(raw_text_str1, model)
-result1
+# Running for 1 input
+import json
 
+result_single = process_single_text(model, raw_text_str1, examples, output_format, output_format_example)
+
+with open('result_single.json', 'w') as file:
+    json.dump(result_single.text, file, indent=4)
 
 # %%
+# Running for multiple input texts
 # Process texts with the model in a loop
-results = []
+results_few = []
 for text in sub_raw_text:
     try:
-        result = process_single_text(text, model)
-        results.append(result)
+        result = process_single_text(model, text, examples,  output_format, output_format_example)
+        results_few.append(result)
     except Exception as e:
         print(f"Error processing text: {text[:50]}...")
         print(f"Error: {str(e)}")
-        results.append(None)
+        results_few.append(None)
 
-#results.save('results.json')
+#%%
+import json
+with open('results_few.json', 'w') as file:
+    for res in results_few:
+        json.dump(res.text, file, indent=4)
 
 # %%
 import json
-with open('results.json', 'r') as file:
-    json.dump(results, file, indent=4)
+with open('results_few.json', 'w') as file:
+    json.dump(results_few, file, indent=4)
+
+#results.save('results.json')
+
 
 # %%

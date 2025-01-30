@@ -817,3 +817,104 @@ Tax Recovery Charges
 """
 taxes_fees = [line.strip() for line in taxes_fees_raw.split("\n") if line.strip()]
 len(taxes_fees)
+
+
+
+
+# %%
+# Ignore
+x = """
+    Input: "IN THE ART OF NEW YORK|MADISON KING RM. 450 SQFT. MADISON AVE VIEWS LRGE MARBLE BATH SEP SHOWER. COMP WIFI"
+    Output: 
+    ```json
+    {
+        "room_type": "King Bedroom",
+        "bed_type": "Unknown",
+        "rate_plan_inclusives": ["Private bath or shower", "Complimetary wirless internet"],
+        "room_amenities": ["Separate tub and shower","Wireless internet connection"],
+        "meal_plan": "Unknown",
+        "room_view": "Avenue View",
+        "taxes_and_fees": "Unknown"
+    }
+ 
+
+    Input: "AAA MEMBER RATE|ECO-FICIENT QUEEN ROOM RUNWAY VIEW. COMPLEMENTARY WIFI, IN ROOM COFFEE, IRON BOARD"
+    Output: 
+    ```json
+    {
+        "room_type": "Queen Bedroom",
+        "bed_type": "Unknown",
+        "rate_plan_inclusives": ["Eco Friendly ", "Complimentary in-room coffee or tea", "Ironing board"],
+        "room_amenities": ["Wireless internet connection", "Ironing board"],
+        "meal_plan": "Unknown",
+        "room_view": "Runway View",
+        "taxes_and_fees": "Unknown"
+    }
+
+    ```json
+    {
+        "room_type": {"value": "string", "confidence": float},
+        "bed_type": {"value": "string", "confidence": float},
+        "rate_plan_inclusives": {"values": ["string"], "confidence": float},
+        "room_amenities": {"values": ["string"], "confidence": float},
+        "meal_plan": {"value": "string", "confidence": float},
+        "room_view": {"value": "string", "confidence": float},
+        "taxes_and_fees": {"value": "string", "confidence": float}
+    }
+    ```
+    ```json
+    {
+        "room_type": {"value": "Queen Bedroom", "confidence": 0.9},
+        "bed_type": {"value": "King Bed", "confidence": 0.8},
+        "rate_plan_inclusives": {
+            "values": ["Unknown"],
+            "confidence": 0.85
+        },
+        "room_amenities": {
+            "values": ["Wireless internet connection", "Ironing board"],
+            "confidence": 0.85
+        },
+        "meal_plan": {"value": "Unknown", "confidence": 0.8},
+        "room_view": {"value": "Ocean view", "confidence": 0.95},
+        "taxes_and_fees": {"value": "Unknown", "confidence": 0.95}
+    }
+    ```
+    ```json
+    {
+        "room_type": {"value": "Queen Bedroom", "confidence": 0.9},
+        "bed_type": {"value": "King Bed", "confidence": 0.8},
+        "rate_plan_inclusives": {
+            "values": ["Unknown"],
+            "confidence": 0.85
+        },
+        "room_amenities": {
+            "values": ["Wireless internet connection", "Ironing board"],
+            "confidence": 0.85
+        },
+        "meal_plan": {"value": "Unknown", "confidence": 0.8},
+        "room_view": {"value": "Ocean view", "confidence": 0.95},
+        "taxes_and_fees": {"value": "Unknown", "confidence": 0.95}
+    }
+    ```
+"""
+# %%
+# Examples
+
+# %%
+# Examples v1
+examples = [
+    """Text: IN THE ART OF NEW YORK|MADISON KING RM. 450 SQFT. MADISON AVE VIEWS LRGE MARBLE BATH SEP SHOWER. COMP WIFI
+    JSON: {\"roomType\": \"King Bedroom\", \"bedType\": \"Unknown\", \"ratePlanInclusives\": \[\"Private bath or shower\", \"Complimentary wireless internet\"\], \"roomAmenities\": \[\"Separate tub and shower\", \"Wireless internet connection\"\], \"mealPlan\": \"Unknown\", \"roomView\": \"Avenue View\", \"taxesAndFees\": \"Unknown\"}""",
+
+    """Text: AAA MEMBER RATE|ECO-FICIENT QUEEN ROOM RUNWAY VIEW. COMPLEMENTARY WIFI, IN ROOM COFFEE, IRON BOARD
+    JSON: {\"roomType\": \"Queen Bedroom\", \"bedType\": \"Unknown\", \"ratePlanInclusives\": [\"Eco Friendly\", \"Complimentary in-room coffee or tea\", \"Ironing board\"], \"roomAmenities\": [\"Wireless internet connection\", \"Ironing board\"], \"mealPlan\": \"Unknown\", \"roomView\": \"Runway View\", \"taxesAndFees\": \"Unknown\"}"""
+]
+
+output_format = """
+    JSON: {"roomType": \"string\", \"bedType\": \"string\", \"ratePlanInclusives\": [\"string\"], \"roomAmenities\": [\"string\"], \"mealPlan\": \"string\", \"roomView\": \"string\", \"taxesAndFees\": \"string\"}
+"""
+
+output_format_example = """
+    JSON: {\"roomType\": \"Queen Bedroom\", \"bedType\": \"King Bed\", \"ratePlanInclusives\": {\"values\": [\"Unknown\"], \"confidence\": 0.85}, \"roomAmenities\": {\"values\": [\"Wireless internet connection\", \"Ironing board\"], \"confidence\": 0.85}, \"mealPlan\": {\"value\": \"Unknown\", \"confidence\": 0.8}, \"roomView\": {\"value\": \"Ocean view\", \"confidence\": 0.95}, \"taxesAndFees\": {\"value\": \"Unknown\", \"confidence\": 0.95}}
+"""
+
