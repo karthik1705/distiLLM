@@ -1,0 +1,30 @@
+torch
+transformers
+accelerate
+datasets
+evaluate
+numpy
+pandas
+tqdm
+wandb
+sentencepiece
+ipykernel
+jupyter 
+notebook
+openpyxl
+matplotlib
+seaborn
+scikit-learn
+scipy
+plotly
+
+# LLMs
+google-generativeai
+vertexai
+sentence_transformers
+bertopic
+
+# Finetuning
+peft
+accelerate
+bitsandbytes
