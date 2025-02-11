@@ -927,4 +927,3 @@ dataset_new['bert_amenities'] = full_bert_results['amenities']
 
 #%%
 dataset_new.to_excel('Data/dataset_bert_extraction_v1.xlsx', index=False)
-# %%
