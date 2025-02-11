@@ -813,4 +813,119 @@ dataset_new['extracted_amenities'] = full_results['amenities']
 
 #%%
 dataset_new.to_excel('Data/dataset_spacy_extraction_v1.xlsx', index=False)
+
+# %%
+#%%
+from sentence_transformers import SentenceTransformer, util
+import torch
+import numpy as np
+
+#%%
+def extract_with_bert(texts, attribute_lists):
+    """
+    Extract attributes using BERT embeddings and semantic similarity
+    """
+    # Load the model
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    
+    # Prepare attribute lists
+    attributes = {
+        'room_types': preprocess_pattern_list(room_types_list),
+        'bed_types': preprocess_pattern_list(bed_types_list),
+        'views': preprocess_pattern_list(room_view_list),
+        'amenities': preprocess_pattern_list(room_amenities_list)
+    }
+    
+    # Create embeddings for all attribute values
+    attribute_embeddings = {}
+    for attr_type, attr_list in attributes.items():
+        attribute_embeddings[attr_type] = model.encode(attr_list, convert_to_tensor=True)
+    
+    results = defaultdict(list)
+    
+    # Process texts in batches
+    batch_size = 32
+    for i in tqdm(range(0, len(texts), batch_size), desc="Processing with BERT"):
+        batch_texts = texts[i:i + batch_size]
+        batch_texts = [text if pd.notna(text) else "" for text in batch_texts]
+        
+        # Encode all texts in batch
+        text_embeddings = model.encode(batch_texts, convert_to_tensor=True)
+        
+        # For each text in the batch
+        for idx, text_embedding in enumerate(text_embeddings):
+            entities = {
+                "text": batch_texts[idx],
+                "room_types": [],
+                "bed_types": [],
+                "views": [],
+                "amenities": []
+            }
+            
+            # For each attribute type
+            for attr_type, attr_embeddings in attribute_embeddings.items():
+                # Calculate similarities
+                similarities = util.cos_sim(text_embedding, attr_embeddings)
+                
+                # Get matches above threshold
+                threshold = 0.5  # Adjust this threshold as needed
+                matches = torch.where(similarities > threshold)[0]
+                
+                # Add matched attributes
+                for match in matches:
+                    entities[attr_type].append(attributes[attr_type][match])
+            
+            # Add results
+            for key, value in entities.items():
+                results[key].append(value)
+    
+    return pd.DataFrame(results)
+
+#%%
+# Test on a sample first
+sample_size = 100
+sample_texts = dataset_raw['Room Description'].sample(n=sample_size, random_state=42)
+
+print("Running BERT analysis...")
+bert_results = extract_with_bert(sample_texts, {
+    'room_types': room_types_list,
+    'bed_types': bed_types_list,
+    'views': room_view_list,
+    'amenities': room_amenities_list
+})
+
+#%%
+# Analyze the results
+def analyze_bert_results(df):
+    for col in ['room_types', 'bed_types', 'views', 'amenities']:
+        print(f"\nMost common {col}:")
+        all_items = [item for sublist in df[col] if sublist for item in sublist]
+        if all_items:
+            print(pd.Series(all_items).value_counts().head(10))
+        else:
+            print("No items found")
+
+analyze_bert_results(bert_results)
+
+#%%
+# If results look good, process the full dataset
+print("\nProcessing full dataset...")
+full_bert_results = extract_with_bert(dataset_raw['Room Description'], {
+    'room_types': room_types_list,
+    'bed_types': bed_types_list,
+    'views': room_view_list,
+    'amenities': room_amenities_list
+})
+
+analyze_bert_results(full_bert_results)
+
+#%%
+# Add results to original dataframe
+dataset_new['bert_room_types'] = full_bert_results['room_types']
+dataset_new['bert_bed_types'] = full_bert_results['bed_types']
+dataset_new['bert_views'] = full_bert_results['views']
+dataset_new['bert_amenities'] = full_bert_results['amenities']
+
+#%%
+dataset_new.to_excel('Data/dataset_bert_extraction_v1.xlsx', index=False)
 # %%
