@@ -23,6 +23,8 @@ google-generativeai
 vertexai
 sentence_transformers
 bertopic
+spacy
+stanza
 
 # Finetuning
 peft

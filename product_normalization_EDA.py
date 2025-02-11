@@ -2,6 +2,9 @@
 import pandas as pd
 from collections import Counter
 import re
+import spacy
+from tqdm import tqdm
+from collections import defaultdict
 
 #%%
 dataset_raw = pd.read_csv('Data/Product_Normalization_GRI.csv')
@@ -96,6 +99,9 @@ import seaborn as sns
 
 # For generating text embeddings
 from sentence_transformers import SentenceTransformer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.semi_supervised import LabelPropagation
+from umap import UMAP
 
 # For clustering
 from sklearn.cluster import KMeans
@@ -182,7 +188,7 @@ room_types = dataset_normalized_attributes['RoomType'].dropna().unique()
 room_types_list = room_types.tolist()
 
 # %%
-'''
+
 # Collating the Normalized Product Attribute data to be excluded through custom stop words
 bed_types = dataset_normalized_attributes['BedType'].dropna().unique()
 bed_types_list = bed_types.tolist()
@@ -201,7 +207,7 @@ room_view_list = room_view_raw.tolist()
 
 taxes_fees_raw = dataset_normalized_attributes['Taxes & Fees'].dropna().unique()
 taxes_fees_list = taxes_fees_raw.tolist()
-'''
+
 
 
 #%%
@@ -223,6 +229,7 @@ def preprocess_for_topic_modeling(text):
     words = [w for w in words if w not in custom_stops]
     return ' '.join(words)
 
+#%%
 # Preprocess all descriptions
 processed_texts = dataset_raw['Room Description'].apply(preprocess_for_topic_modeling)
 
@@ -313,4 +320,497 @@ visualize_bertopic_results(bertopic_model)
 # Add topics to original dataframe
 dataset_raw['LDA_Topic'] = np.argmax(lda_output, axis=1)
 dataset_raw['BERTopic'] = topics
+
+# %%
+
+#%%
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import NMF  # Non-negative Matrix Factorization - works well with TF-IDF
+from sklearn.decomposition import LatentDirichletAllocation
+import numpy as np
+import pandas as pd
+
+#%%
+def run_tfidf_topic_modeling(texts, n_topics=10, top_n_words=10):
+    # Create TF-IDF matrix
+    tfidf_vectorizer = TfidfVectorizer(
+        max_df=0.95,         # Ignore terms that appear in >95% of docs
+        min_df=2,           # Ignore terms that appear in <2 docs
+        stop_words='english',
+        ngram_range=(1, 2)  # Consider both unigrams and bigrams
+    )
+    tfidf_matrix = tfidf_vectorizer.fit_transform(texts)
+    
+    # 1. Using NMF (works better with TF-IDF)
+    print("Running NMF with TF-IDF...")
+    nmf_model = NMF(n_components=n_topics, random_state=42)
+    nmf_output = nmf_model.fit_transform(tfidf_matrix)
+    
+    # 2. Using LDA with TF-IDF (less common but possible)
+    print("\nRunning LDA with TF-IDF...")
+    lda_model = LatentDirichletAllocation(
+        n_components=n_topics,
+        random_state=42
+    )
+    lda_output = lda_model.fit_transform(tfidf_matrix)
+    
+    # Get feature names (words)
+    feature_names = tfidf_vectorizer.get_feature_names_out()
+    
+    # Print top words for each topic from NMF
+    print("\nNMF Topics:")
+    for topic_idx, topic in enumerate(nmf_model.components_):
+        top_words_idx = topic.argsort()[:-top_n_words-1:-1]
+        top_words = [feature_names[i] for i in top_words_idx]
+        print(f"Topic {topic_idx + 1}: {', '.join(top_words)}")
+    
+    # Print top words for each topic from LDA
+    print("\nLDA Topics:")
+    for topic_idx, topic in enumerate(lda_model.components_):
+        top_words_idx = topic.argsort()[:-top_n_words-1:-1]
+        top_words = [feature_names[i] for i in top_words_idx]
+        print(f"Topic {topic_idx + 1}: {', '.join(top_words)}")
+    
+    return {
+        'vectorizer': tfidf_vectorizer,
+        'nmf_model': nmf_model,
+        'nmf_output': nmf_output,
+        'lda_model': lda_model,
+        'lda_output': lda_output
+    }
+
+#%%
+# Run the analysis
+processed_texts = dataset_raw['Room Description'].apply(preprocess_for_topic_modeling)
+results = run_tfidf_topic_modeling(processed_texts, n_topics=30)
+
+#%%
+# Add topic assignments to the original dataframe
+dataset_raw['NMF_Topic'] = np.argmax(results['nmf_output'], axis=1)
+dataset_raw['TFIDF_LDA_Topic'] = np.argmax(results['lda_output'], axis=1)
+
+#%%
+# Visualize topic distribution
+import plotly.express as px
+
+def plot_topic_distribution(topic_assignments, title):
+    topic_counts = pd.Series(topic_assignments).value_counts().sort_index()
+    fig = px.bar(
+        x=topic_counts.index + 1,
+        y=topic_counts.values,
+        labels={'x': 'Topic Number', 'y': 'Number of Documents'},
+        title=title
+    )
+    fig.show()
+
+# Plot distributions
+plot_topic_distribution(dataset_raw['NMF_Topic'], 'Distribution of NMF Topics')
+plot_topic_distribution(dataset_raw['TFIDF_LDA_Topic'], 'Distribution of TF-IDF LDA Topics')
+
+
+
+#Semi-supervised clustering
+#%%
+from sklearn.preprocessing import LabelEncoder
+from sklearn.semi_supervised import LabelPropagation
+from umap import UMAP
+import matplotlib.pyplot as plt
+
+#%%
+def run_semi_supervised_clustering(descriptions, labels, n_components=2):
+    # 1. Prepare the labels
+    le = LabelEncoder()
+    encoded_labels = le.fit_transform(labels)
+    
+    # 2. Generate embeddings
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(descriptions, convert_to_numpy=True)
+    
+    # 3. Reduce dimensionality while preserving label information
+    umap_supervised = UMAP(
+        n_components=n_components,
+        random_state=42,
+        n_neighbors=15,
+        min_dist=0.1,
+        target_metric='categorical',  # This helps preserve label structure
+        target_weight=0.5  # Balance between preserving labels and topology (0.0 to 1.0)
+    )
+    
+    reduced_embeddings = umap_supervised.fit_transform(
+        embeddings,
+        y=encoded_labels  # Providing labels for semi-supervised learning
+    )
+    
+    # 4. Use LabelPropagation for semi-supervised learning
+    label_prop_model = LabelPropagation(kernel='knn', n_neighbors=7)
+    label_prop_model.fit(reduced_embeddings, encoded_labels)
+    
+    # Get predicted labels
+    predicted_labels = label_prop_model.predict(reduced_embeddings)
+    predicted_label_names = le.inverse_transform(predicted_labels)
+    
+    # 5. Create visualization
+    plt.figure(figsize=(12, 8))
+    scatter = plt.scatter(
+        reduced_embeddings[:, 0],
+        reduced_embeddings[:, 1],
+        c=predicted_labels,
+        cmap='tab20',
+        alpha=0.6
+    )
+    plt.title('Semi-supervised Clustering with Room Type Labels')
+    plt.colorbar(scatter)
+    
+    # Add legend with original label names
+    unique_labels = le.inverse_transform(np.unique(predicted_labels))
+    legend_elements = [plt.Line2D([0], [0], marker='o', color='w', 
+                                markerfacecolor=plt.cm.tab20(i/len(unique_labels)), 
+                                label=label, markersize=10)
+                      for i, label in enumerate(unique_labels)]
+    plt.legend(handles=legend_elements, title='Room Types', bbox_to_anchor=(1.05, 1))
+    plt.tight_layout()
+    plt.show()
+    
+    return reduced_embeddings, predicted_label_names, le
+
+#%%
+# Run the analysis
+reduced_embeddings, predicted_labels, label_encoder = run_semi_supervised_clustering(
+    dataset_raw['Room Description'],
+    dataset_raw['Guest Room Info']
+)
+
+#%%
+# Add results to dataframe
+dataset_raw['Supervised_Cluster'] = predicted_labels
+
+# Analyze agreement between original and predicted labels
+comparison_df = pd.DataFrame({
+    'Original_Label': dataset_raw['Guest Room Info'],
+    'Predicted_Label': predicted_labels
+})
+
+print("\nLabel Distribution Comparison:")
+print("\nOriginal Labels:")
+print(comparison_df['Original_Label'].value_counts())
+print("\nPredicted Labels:")
+print(comparison_df['Predicted_Label'].value_counts())
+
+# Calculate agreement percentage
+agreement = (comparison_df['Original_Label'] == comparison_df['Predicted_Label']).mean() * 100
+print(f"\nLabel Agreement: {agreement:.2f}%")
+
+#%%
+# Analyze cases where predictions differ from original labels
+disagreements = comparison_df[comparison_df['Original_Label'] != comparison_df['Predicted_Label']]
+print("\nSample of Disagreements:")
+sample_disagreements = disagreements.join(dataset_raw['Room Description']).sample(5)
+print(sample_disagreements)
+
+
+#%%
+##### Need to try clustering with simplified labels
+def run_simplified_clustering(descriptions, labels, n_components=2):
+    # 1. Simplify labels by grouping similar categories
+    label_mapping = {
+        'Deluxe Room': 'Deluxe',
+        'Deluxe Suite': 'Deluxe',
+        'Executive/Club Room': 'Executive',
+        'Executive/Club Suite': 'Executive',
+        'Classic Room': 'Standard',
+        'Standard Room': 'Standard',
+        'Superior Room': 'Standard',
+        'Premier Room': 'Premium',
+        'Premier Suite': 'Premium',
+        'Luxury Room': 'Premium',
+        'Luxury Suite': 'Premium',
+        'Presidential Suite': 'Premium',
+        'Penthouse': 'Premium',
+
+        # Add more mappings as needed
+    }
+    
+    simplified_labels = labels.map(lambda x: label_mapping.get(x, x))
+    
+    # 2. Run the same clustering but with simplified labels
+    le = LabelEncoder()
+    encoded_labels = le.fit_transform(simplified_labels)
+    
+    # Generate embeddings
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(descriptions, convert_to_numpy=True)
+    
+    # UMAP with higher neighbor count for more global structure
+    umap_supervised = UMAP(
+        n_components=n_components,
+        random_state=42,
+        n_neighbors=30,  # Increased from 15
+        min_dist=0.2,    # Increased from 0.1
+        target_metric='categorical',
+        target_weight=0.7  # Increased label influence
+    )
+    
+    reduced_embeddings = umap_supervised.fit_transform(embeddings, y=encoded_labels)
+    
+    # Visualization with simplified categories
+    plt.figure(figsize=(12, 8))
+    scatter = plt.scatter(
+        reduced_embeddings[:, 0],
+        reduced_embeddings[:, 1],
+        c=encoded_labels,
+        cmap='tab10',  # Using a colormap with fewer colors
+        alpha=0.6
+    )
+    plt.title('Simplified Room Type Clustering')
+    
+    # Add legend with simplified labels
+    unique_labels = le.inverse_transform(np.unique(encoded_labels))
+    legend_elements = [plt.Line2D([0], [0], marker='o', color='w', 
+                                markerfacecolor=plt.cm.tab10(i/len(unique_labels)), 
+                                label=label, markersize=10)
+                      for i, label in enumerate(unique_labels)]
+    plt.legend(handles=legend_elements, title='Room Types', bbox_to_anchor=(1.05, 1))
+    plt.tight_layout()
+    plt.show()
+    
+    return reduced_embeddings, simplified_labels, le
+
+#%%
+# Run the simplified analysis
+reduced_embeddings, simplified_labels, label_encoder = run_simplified_clustering(
+    dataset_raw['Room Description'],
+    dataset_raw['Guest Room Info']
+)
+
+#%%
+# Analyze the distribution of simplified categories
+print("\nSimplified Label Distribution:")
+print(pd.Series(simplified_labels).value_counts())
+
+#%%
+# Optional: Analyze key terms for each simplified category
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+def analyze_category_terms(descriptions, labels, category):
+    vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2))
+    mask = labels == category
+    if mask.sum() > 0:
+        tfidf = vectorizer.fit_transform(descriptions[mask])
+        terms = pd.DataFrame(
+            tfidf.mean(axis=0).A1,
+            index=vectorizer.get_feature_names_out(),
+            columns=['score']
+        ).sort_values('score', ascending=False)
+        print(f"\nTop terms for {category}:")
+        print(terms.head(10))
+
+# Analyze terms for each major category
+for category in pd.Series(simplified_labels).unique():
+    analyze_category_terms(dataset_raw['Room Description'], simplified_labels, category)
+
+
+
+#%%
+# Topic Modeling Prep
+dataset_normalized_attributes = pd.read_excel('Data/Normalized_product_attribute_name.xlsx', sheet_name = 'Normalized Product Attributes')
+dataset_normalized_attributes
+
+room_types = dataset_normalized_attributes['RoomType'].dropna().unique()
+room_types_list = room_types.tolist()
+
+# %%
+
+# Collating the Normalized Product Attribute data to be excluded through custom stop words
+bed_types = dataset_normalized_attributes['BedType'].dropna().unique()
+bed_types_list = bed_types.tolist()
+
+rate_plan_inclusives_raw = dataset_normalized_attributes['Rateplan Incl/Value-adds'].dropna().unique()
+rate_plan_inclusives = rate_plan_inclusives_raw.tolist()
+
+room_amenities_raw = dataset_normalized_attributes['Room Amenities'].dropna().unique()
+room_amenities_list = room_amenities_raw.tolist()
+
+meal_plan_raw = dataset_normalized_attributes['Mealplan'].dropna().unique()
+meal_plan_list = meal_plan_raw.tolist()
+
+room_view_raw = dataset_normalized_attributes['RoomView'].dropna().unique()
+room_view_list = room_view_raw.tolist()
+
+taxes_fees_raw = dataset_normalized_attributes['Taxes & Fees'].dropna().unique()
+taxes_fees_list = taxes_fees_raw.tolist()
+
+
+
+
+
+#%%
+# Import required libraries
+import spacy
+from tqdm import tqdm
+import pandas as pd
+from collections import defaultdict
+
+#%%
+def preprocess_pattern_list(pattern_list):
+    """
+    Convert camelCase/PascalCase patterns to lowercase and split into individual words
+    Example: 'KingBed' -> ['king', 'bed']
+    """
+    processed = []
+    for pattern in pattern_list:
+        # Handle NaN values and empty strings
+        if pd.isna(pattern) or str(pattern).strip() == '':
+            continue
+            
+        # Convert to string and strip whitespace
+        pattern = str(pattern).strip()
+        
+        # Split camelCase/PascalCase
+        words = re.findall('[A-Z][^A-Z]*', pattern)
+        
+        # Only add non-empty patterns
+        if words:  # If words were found by the regex
+            processed_pattern = ' '.join(word.lower() for word in words).strip()
+            if processed_pattern:  # If the result isn't empty
+                processed.append(processed_pattern)
+        else:  # If no camelCase/PascalCase found, just lowercase the whole thing
+            if pattern:  # If pattern isn't empty
+                processed.append(pattern.lower().strip())
+    
+    # Remove duplicates and empty strings
+    return [p for p in list(set(processed)) if p.strip()]
+
+#%%
+def analyze_with_spacy(texts):
+    # Load transformer-based English model
+    try:
+        nlp = spacy.load("en_core_web_trf")
+    except OSError:
+        print("Downloading en_core_web_trf model...")
+        spacy.cli.download("en_core_web_trf")
+        nlp = spacy.load("en_core_web_trf")
+    
+    # Preprocess the pattern lists
+    processed_room_types = preprocess_pattern_list(room_types_list)
+    processed_bed_types = preprocess_pattern_list(bed_types_list)
+    processed_room_views = preprocess_pattern_list(room_view_list)
+    processed_amenities = preprocess_pattern_list(room_amenities_list)
+    
+    # Custom labels for hospitality domain
+    room_patterns = [
+        {"label": "ROOM_TYPE", "pattern": [{"LOWER": {"IN": processed_room_types}}]},
+        {"label": "BED_TYPE", "pattern": [{"LOWER": {"IN": processed_bed_types}}]},
+        {"label": "VIEW_TYPE", "pattern": [
+            {"LOWER": {"IN": processed_room_views}},
+            {"LOWER": "view", "OP": "?"}
+        ]},
+        {"label": "AMENITY", "pattern": [{"LOWER": {"IN": processed_amenities}}]}
+    ]
+    
+    # Add patterns to pipeline
+    if "entity_ruler" not in nlp.pipe_names:
+        ruler = nlp.add_pipe("entity_ruler", before="ner")
+    else:
+        ruler = nlp.get_pipe("entity_ruler")
+    ruler.add_patterns(room_patterns)
+    
+    results = defaultdict(list)
+    
+    # Process each text with batch processing for better performance
+    batch_size = 32  # Adjust based on your available RAM
+    for i in tqdm(range(0, len(texts), batch_size), desc="Processing with spaCy"):
+        batch_texts = texts[i:i + batch_size]
+        batch_texts = [text if pd.notna(text) else "" for text in batch_texts]
+        
+        # Process batch
+        docs = nlp.pipe(batch_texts)
+        
+        for doc in docs:
+            entities = {
+                "text": doc.text,
+                "room_types": [],
+                "bed_types": [],
+                "view_types": [],
+                "amenities": [],
+                "other_entities": []
+            }
+            
+            for ent in doc.ents:
+                if ent.label_ == "ROOM_TYPE":
+                    entities["room_types"].append(ent.text.lower())
+                elif ent.label_ == "BED_TYPE":
+                    entities["bed_types"].append(ent.text.lower())
+                elif ent.label_ == "VIEW_TYPE":
+                    entities["view_types"].append(ent.text.lower())
+                elif ent.label_ == "AMENITY":
+                    entities["amenities"].append(ent.text.lower())
+                else:
+                    entities["other_entities"].append((ent.text.lower(), ent.label_))
+            
+            for key, value in entities.items():
+                results[key].append(value)
+    
+    return pd.DataFrame(results)
+
+
+#%%
+# Analyze the results
+def analyze_entity_frequencies(df):
+    print("\nMost common room types:")
+    room_types = [item for sublist in df['room_types'] for item in sublist]
+    print(pd.Series(room_types).value_counts().head(10))
+    
+    print("\nMost common bed types:")
+    bed_types = [item for sublist in df['bed_types'] for item in sublist]
+    print(pd.Series(bed_types).value_counts().head(10))
+    
+    print("\nMost common view types:")
+    view_types = [item for sublist in df['view_types'] for item in sublist]
+    print(pd.Series(view_types).value_counts().head(10))
+    
+    print("\nMost common amenities:")
+    amenities = [item for sublist in df['amenities'] for item in sublist]
+    print(pd.Series(amenities).value_counts().head(10))
+    
+    print("\nSample of other entities found:")
+    other_entities = [item for sublist in df['other_entities'] for item in sublist]
+    print(pd.Series([e[0] for e in other_entities]).value_counts().head(10))
+
+
+#%%
+# Print the processed patterns for verification
+print("Processed Room Types:", preprocess_pattern_list(room_types_list))
+print("Processed Bed Types:", preprocess_pattern_list(bed_types_list))
+print("Processed View Types:", preprocess_pattern_list(room_view_list))
+print("Processed Amenities:", preprocess_pattern_list(room_amenities_list))
+
+#%%
+# Run analysis on a sample first to verify results
+sample_size = 100
+sample_texts = dataset_raw['Room Description'].sample(n=sample_size, random_state=42)
+
+print("\nRunning spaCy analysis with transformer model...")
+spacy_results = analyze_with_spacy(sample_texts)
+
+#%%
+analyze_entity_frequencies(spacy_results)
+
+#%%
+# If results look good, process the full dataset
+print("\nProcessing full dataset...")
+full_results = analyze_with_spacy(dataset_raw['Room Description'])
+analyze_entity_frequencies(full_results)
+
+#%%
+# Add extracted features back to original dataframe
+dataset_new = dataset_raw.copy()
+dataset_new['extracted_room_types'] = full_results['room_types']
+dataset_new['extracted_bed_types'] = full_results['bed_types']
+dataset_new['extracted_view_types'] = full_results['view_types']
+dataset_new['extracted_amenities'] = full_results['amenities']
+
+
+
+#%%
+dataset_new.to_excel('Data/dataset_spacy_extraction_v1.xlsx', index=False)
 # %%
