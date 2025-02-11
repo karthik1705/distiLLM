@@ -809,12 +809,10 @@ dataset_new['extracted_bed_types'] = full_results['bed_types']
 dataset_new['extracted_view_types'] = full_results['view_types']
 dataset_new['extracted_amenities'] = full_results['amenities']
 
-
-
-#%%
 dataset_new.to_excel('Data/dataset_spacy_extraction_v1.xlsx', index=False)
 
-# %%
+
+
 #%%
 from sentence_transformers import SentenceTransformer, util
 import torch
@@ -921,6 +919,7 @@ analyze_bert_results(full_bert_results)
 
 #%%
 # Add results to original dataframe
+dataset_new = dataset_raw.copy()
 dataset_new['bert_room_types'] = full_bert_results['room_types']
 dataset_new['bert_bed_types'] = full_bert_results['bed_types']
 dataset_new['bert_views'] = full_bert_results['views']
