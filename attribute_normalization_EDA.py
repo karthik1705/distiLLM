@@ -231,6 +231,7 @@ def preprocess_for_topic_modeling(text):
     words = [w for w in words if w not in custom_stops]
     return ' '.join(words)
 
+
 #%%
 # Preprocess all descriptions
 processed_texts = dataset_raw['Room Description'].apply(preprocess_for_topic_modeling)
@@ -323,8 +324,8 @@ visualize_bertopic_results(bertopic_model)
 dataset_raw['LDA_Topic'] = np.argmax(lda_output, axis=1)
 dataset_raw['BERTopic'] = topics
 
-# %%
 
+### TF-IDF Topic Modeling
 #%%
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF  # Non-negative Matrix Factorization - works well with TF-IDF
