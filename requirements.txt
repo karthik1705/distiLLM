@@ -17,6 +17,7 @@ seaborn
 scikit-learn
 scipy
 plotly
+fuzzywuzzy
 
 # LLMs
 google-generativeai
