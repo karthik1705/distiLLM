@@ -723,8 +723,17 @@ def analyze_fuzzy_results(df):
 analyze_fuzzy_results(fuzzy_results)
 
 #%%
-# If results look good, process the full dataset
-print("\nProcessing full dataset...")
+print(fuzzy_results.head())
+
+#%%
+
+
+#%%
+dataset_sample.to_excel('Data/sample_fuzzy_extraction_input.xlsx', index=False)
+fuzzy_results.to_excel('Data/sample_fuzzy_extraction_output.xlsx', index=False)
+
+# %%
+
 full_fuzzy_results = fuzzy_extract_attributes(
     dataset_raw['Room Description'],
     {
