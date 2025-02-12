@@ -411,8 +411,8 @@ plot_topic_distribution(dataset_raw['TFIDF_LDA_Topic'], 'Distribution of TF-IDF 
 
 
 
-#Semi-supervised clustering
 #%%
+#Semi-supervised clustering using SentenceTransformer embeddings
 from sklearn.preprocessing import LabelEncoder
 from sklearn.semi_supervised import LabelPropagation
 from umap import UMAP
@@ -726,14 +726,10 @@ analyze_fuzzy_results(fuzzy_results)
 print(fuzzy_results.head())
 
 #%%
-
-
-#%%
 dataset_sample.to_excel('Data/sample_fuzzy_extraction_input.xlsx', index=False)
 fuzzy_results.to_excel('Data/sample_fuzzy_extraction_output.xlsx', index=False)
 
 # %%
-
 full_fuzzy_results = fuzzy_extract_attributes(
     dataset_raw['Room Description'],
     {
@@ -754,4 +750,4 @@ dataset_new['fuzzy_amenities'] = full_fuzzy_results['amenities']
 
 #%%
 dataset_new.to_excel('Data/dataset_fuzzy_extraction_v1.xlsx', index=False)
-# %%
+
