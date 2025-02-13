@@ -103,7 +103,7 @@ def analyze_with_spacy(texts):
     results = defaultdict(list)
     
     # Process each text with batch processing for better performance
-    batch_size = 32  # Adjust based on your available RAM
+    batch_size = 32  # Adjusting a random number based on potential available RAM
     for i in tqdm(range(0, len(texts), batch_size), desc="Processing with spaCy"):
         batch_texts = texts[i:i + batch_size]
         batch_texts = [text if pd.notna(text) else "" for text in batch_texts]

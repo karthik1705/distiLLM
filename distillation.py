@@ -26,6 +26,6 @@ class RoomDataset(Dataset):
         }
 
 # Initialize model and tokenizer
-model_name = "distilbert-base-uncased"  # or another smaller model
+model_name = "distilbert-base-uncased"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
