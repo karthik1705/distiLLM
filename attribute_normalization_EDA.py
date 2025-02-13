@@ -27,7 +27,6 @@ print(access_analysis[['Room Description', 'Guest Room Info']].head())
 
 
 #%%
-#dataset_raw['Room Description'].where(dataset_raw['Room Description'].str.contains('ACCESS'))
 
 # Find rows where 'ADA|ACC\ACESS' appears in Room Description but RoomType is not 'Accessible Room'
 access_analysis = dataset_raw[
