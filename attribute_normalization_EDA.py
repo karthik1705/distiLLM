@@ -180,7 +180,7 @@ print(df[['description', 'current_label', 'cluster']])
 # %%
 #df.to_csv('Data/Product_Normalization_GRI_clustered.csv', index=False)
 
-#%%
+#%% ##### TOPIC MODELING #####
 # Topic Modeling Prep
 dataset_normalized_attributes = pd.read_excel('Data/Normalized_product_attribute_name.xlsx', sheet_name = 'Normalized Product Attributes')
 dataset_normalized_attributes
@@ -324,8 +324,8 @@ dataset_raw['LDA_Topic'] = np.argmax(lda_output, axis=1)
 dataset_raw['BERTopic'] = topics
 
 
-### TF-IDF Topic Modeling
-#%%
+
+#%% ##### TF-IDF Topic Modeling #####
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF  # Non-negative Matrix Factorization - works well with TF-IDF
 from sklearn.decomposition import LatentDirichletAllocation
@@ -611,7 +611,7 @@ def analyze_category_terms(descriptions, labels, category):
 for category in pd.Series(simplified_labels).unique():
     analyze_category_terms(dataset_raw['Room Description'], simplified_labels, category)
 
-#%%
+#%% ##### FUZZY MATCHING #####
 def fuzzy_extract_attributes(descriptions, attribute_lists, threshold=80):
     """
     Extract attributes using fuzzy string matching with improved preprocessing
