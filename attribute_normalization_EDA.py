@@ -741,6 +741,7 @@ full_fuzzy_results = fuzzy_extract_attributes(
 )
 
 #%%
+'''
 # Add results to original dataframe
 dataset_new = dataset_raw.copy()
 dataset_new['fuzzy_room_types'] = full_fuzzy_results['room_types']
@@ -750,4 +751,55 @@ dataset_new['fuzzy_amenities'] = full_fuzzy_results['amenities']
 
 #%%
 dataset_new.to_excel('Data/dataset_fuzzy_extraction_v1.xlsx', index=False)
+'''
 
+# %%
+def evaluate_fuzzy_accuracy(fuzzy_results, full_data):
+    """Evaluate fuzzy matching extraction accuracy against true labels"""
+    # Ensure we're using the same number of samples
+    if len(fuzzy_results) != len(full_data):
+        print(f"Warning: Results ({len(fuzzy_results)}) and samples ({len(full_data)}) length mismatch")
+        n_samples = min(len(fuzzy_results), len(full_data))
+        fuzzy_results = fuzzy_results.iloc[:n_samples]
+        full_data = full_data.iloc[:n_samples]
+    
+    correct = 0
+    total = len(full_data)
+    
+    print("\nFuzzy Matching Evaluation:")
+    print("==========================")
+    
+    for i, (_, row) in enumerate(full_data.iterrows()):
+        true_label = str(row['Guest Room Info']).lower()
+        # Extract room types from fuzzy matches
+        predicted_types = [match['matched_text'].lower() for match in fuzzy_results.iloc[i]['room_types']]
+        
+        # Check for match
+        match = any(true_label in pred or pred in true_label for pred in predicted_types)
+        correct += match
+        
+        # Print first 5 examples
+        if i < 5:
+            print(f"\nDescription: {row['Room Description']}")
+            print(f"True Label: {true_label}")
+            print(f"Predicted Types: {predicted_types}")
+            print(f"Match: {'✓' if match else '✗'}")
+    
+    accuracy = correct / total
+    print(f"\nOverall Accuracy: {accuracy:.2%}")
+    
+    return accuracy
+
+#%%
+# Run fuzzy matching on full dataset and evaluate
+fuzzy_results = fuzzy_extract_attributes(
+    dataset_raw['Room Description'],
+    {
+        'room_types': room_types_list,
+        'bed_types': bed_types_list,
+        'views': room_view_list
+    }
+)
+accuracy = evaluate_fuzzy_accuracy(fuzzy_results, dataset_raw)
+
+# %%
